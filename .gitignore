@@ -1,0 +1,11 @@
+# Generated bundles and prompts
+bundles/
+prompt.txt
+*.bundle.txt
+
+# Rebuilt trees from unbundle (default output)
+unbundled/
+
+# Temp
+*.tmp
+*.log
