@@ -124,6 +124,20 @@ lines, reconstruction still works (a new `FILE` line starts the next file).
 - Line endings are normalized to the platform default; a trailing-newline byte may differ.
   Harmless for source code.
 
+## Tests
+
+A self-contained end-to-end suite (no dependencies, no Pester) runs the real scripts in
+separate `powershell.exe` processes against isolated temp fixtures:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+```
+
+It covers 23 cases: include/exclude rules, binary & size skipping, whitelist, timestamped
+output, prompt generation, full round-trip (incl. non-ASCII), preview/diff, created /
+modified / unchanged detection, tolerant parsing of broken bundles, path-traversal
+rejection, error handling, and the git-commit workflow. Exit code = number of failures.
+
 ## Push to GitHub
 
 This repo is already initialized locally. To publish it:

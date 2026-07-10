@@ -90,9 +90,17 @@ $files = New-Object System.Collections.Generic.List[object]
 $current = $null
 $buffer = New-Object System.Collections.Generic.List[string]
 
-function Close-Current {
+function Close-Current([bool]$Trim) {
     if ($null -ne $script:current) {
-        $script:files.Add([pscustomobject]@{ Path = $script:current; Lines = @($script:buffer.ToArray()) })
+        $buf = @($script:buffer.ToArray())
+        if ($Trim) {
+            # Degraded bundle (END marker missing): drop the trailing blank
+            # separator lines that would otherwise be absorbed into the content.
+            $end = $buf.Count
+            while ($end -gt 0 -and $buf[$end - 1] -eq '') { $end-- }
+            if ($end -eq 0) { $buf = @() } elseif ($end -lt $buf.Count) { $buf = $buf[0..($end - 1)] }
+        }
+        $script:files.Add([pscustomobject]@{ Path = $script:current; Lines = $buf })
         $script:current = $null
         $script:buffer.Clear()
     }
@@ -100,18 +108,18 @@ function Close-Current {
 
 foreach ($line in $lines) {
     if ($line -match $FileBeginRx) {
-        Close-Current
+        Close-Current $true    # END may be missing before this FILE: trim separators
         $current = $Matches[1]
         continue
     }
     if ($line -match $FileEndRx) {
-        Close-Current
+        Close-Current $false   # proper END marker: keep content exactly
         continue
     }
     if ($null -ne $current) { $buffer.Add($line) }
     # lines outside any block (header/manifest/stray prose) are ignored
 }
-Close-Current
+Close-Current $true
 
 if ($files.Count -eq 0) { throw "No file blocks found in $InputPath (is it a valid bundle?)" }
 
@@ -176,9 +184,15 @@ if ($GitCommit) {
     if ($Preview) { Write-Host 'Skipping commit in -Preview mode.' -ForegroundColor DarkYellow; return }
     $git = Get-Command git -ErrorAction SilentlyContinue
     if (-not $git) { Write-Warning 'git not found on PATH; cannot commit.'; return }
-    $isRepo = (& git -C "$outFull" rev-parse --is-inside-work-tree 2>$null)
+    # git writes to stderr on non-repos; keep that from becoming a terminating error.
+    $ErrorActionPreference = 'Continue'
+    $isRepo = $false
+    try {
+        $res = & git -C "$outFull" rev-parse --is-inside-work-tree 2>$null
+        if ($LASTEXITCODE -eq 0 -and $res -eq 'true') { $isRepo = $true }
+    } catch { $isRepo = $false }
     $global:LASTEXITCODE = 0
-    if ($isRepo -ne 'true') {
+    if (-not $isRepo) {
         Write-Warning "Target is not a git repo. Run 'git init' inside '$outFull' first."
         exit 0
     }
